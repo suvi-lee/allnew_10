@@ -13,7 +13,7 @@ body {
   width: min(100%, 1080px);
   margin: 0 auto;
   padding: 18px;
-  padding-bottom: 40px;
+  padding-bottom: 48px;
 }
 
 .hero {
@@ -120,6 +120,10 @@ button {
   cursor: pointer;
 }
 
+button:active {
+  transform: scale(0.98);
+}
+
 button.sub {
   background: #eef2ff;
   color: #4f63d7;
@@ -132,7 +136,7 @@ button.sub {
 }
 
 .result {
-  margin-bottom: 0;
+  margin: 10px 0 0;
   font-weight: 800;
   color: #4f63d7;
 }
@@ -173,6 +177,7 @@ button.sub {
 @media (max-width: 760px) {
   .app {
     padding: 12px;
+    padding-bottom: 36px;
   }
 
   .hero {
