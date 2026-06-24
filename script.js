@@ -1,50 +1,12 @@
-const students = [
-  "고우리", "기태경", "김수현", "김민준", "김서연",
-  "남아엘", "박성우", "송지효", "안정우", "오태윤",
-  "위승아", "이선아", "이유준", "임규민", "정별",
-  "정시아", "정윤성", "최지원", "한지윤"
-];
+const API_URL = "https://script.google.com/macros/s/AKfycbzDn-8zPiHMvVcg7VJ9gYKxiHC8vqD3l2gV6OHC0Q6fi9eNlIJSk5ZCsJ_BePb8T_AOiQ/exec";
 
-const sampleData = {
-  schedule: [
-    { date: "6/24(수)", title: "학급회의" },
-    { date: "6/25(목)", title: "영어 단어시험" },
-    { date: "6/26(금)", title: "독서기록장 제출" }
-  ],
-  supplies: {
-    status: "input",
-    items: ["체육복", "독서기록장"]
-  },
-  assignments: {
-    status: "input",
-    items: [
-      { title: "영어 단어 외우기", dday: "D-1" },
-      { title: "사회 활동지 제출", dday: "D-2" }
-    ]
-  },
-  praiseTop3: ["김민준", "정시아", "송지효"]
-};
+let students = [];
+let homeData = null;
 
 function init() {
-  renderStudents();
   renderClock();
   setInterval(renderClock, 1000);
-
-  renderSchedule();
-  renderSupplies();
-  renderAssignments();
-  renderPraiseRanking();
-}
-
-function renderStudents() {
-  const select = document.getElementById("studentSelect");
-
-  students.forEach(name => {
-    const option = document.createElement("option");
-    option.value = name;
-    option.textContent = name;
-    select.appendChild(option);
-  });
+  loadHomeData();
 }
 
 function renderClock() {
@@ -56,7 +18,50 @@ function renderClock() {
   document.getElementById("clock").textContent = `${h}:${m}:${s}`;
 }
 
-function checkAttendance() {
+async function loadHomeData() {
+  try {
+    const res = await fetch(`${API_URL}?action=home`);
+    const data = await res.json();
+
+    homeData = data;
+    students = data.students || [];
+
+    renderStudents();
+    renderSchedule(data.schedule || []);
+    renderSupplies(data.supplies || { status: "missing", items: [] });
+    renderAssignments(data.assignments || []);
+    renderPraiseRanking(data.praiseTop3 || []);
+  } catch (error) {
+    console.error(error);
+    renderSchedule([]);
+    renderSupplies({ status: "missing", items: [] });
+    renderAssignments([]);
+    renderPraiseRanking([]);
+  }
+}
+
+function renderStudents() {
+  const select = document.getElementById("studentSelect");
+  select.innerHTML = `<option value="">이름을 선택하세요</option>`;
+
+  students.forEach(student => {
+    const option = document.createElement("option");
+    option.value = student.name;
+    option.textContent = `${student.number}. ${student.name}`;
+    select.appendChild(option);
+  });
+}
+
+async function postData(payload) {
+  const res = await fetch(API_URL, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+
+  return await res.json();
+}
+
+async function checkAttendance() {
   const name = document.getElementById("studentSelect").value;
   const result = document.getElementById("attendanceResult");
 
@@ -65,40 +70,45 @@ function checkAttendance() {
     return;
   }
 
-  const now = new Date();
-  const hour = now.getHours();
-  const minute = now.getMinutes();
+  result.textContent = "출석 기록 중...";
 
-  const isLate = hour > 8 || (hour === 8 && minute >= 48);
-  const status = isLate ? "🔴 지각" : "🟢 정시등교";
+  try {
+    const data = await postData({
+      action: "attendance",
+      name
+    });
 
-  const time = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+    if (!data.ok) {
+      result.textContent = "출석 기록에 실패했습니다.";
+      return;
+    }
 
-  result.textContent = `${name} ${time} 출석 완료! ${status}`;
-
-  // 나중에 Google Apps Script로 전송할 부분
-  console.log({
-    type: "attendance",
-    name,
-    time,
-    status
-  });
+    const statusIcon = data.status === "지각" ? "🔴" : "🟢";
+    result.textContent = `${name} ${data.time} 출석 완료! ${statusIcon} ${data.status}`;
+  } catch (error) {
+    console.error(error);
+    result.textContent = "연결 오류가 발생했습니다.";
+  }
 }
 
-function renderSchedule() {
+function renderSchedule(schedule) {
   const list = document.getElementById("scheduleList");
   list.innerHTML = "";
 
-  sampleData.schedule.forEach(item => {
+  if (!schedule.length) {
+    list.innerHTML = `<li class="empty">이번 주 학사일정이 없습니다.</li>`;
+    return;
+  }
+
+  schedule.forEach(item => {
     const li = document.createElement("li");
-    li.innerHTML = `<strong>${item.date}</strong> ${item.title}`;
+    li.innerHTML = `<strong>${formatShortDate(item.date)}</strong> ${item.title || item.content || ""}`;
     list.appendChild(li);
   });
 }
 
-function renderSupplies() {
+function renderSupplies(data) {
   const box = document.getElementById("supplyBox");
-  const data = sampleData.supplies;
 
   if (data.status === "input") {
     box.innerHTML = data.items.map(item => `🎒 ${item}`).join("<br>");
@@ -109,127 +119,203 @@ function renderSupplies() {
   }
 }
 
-function renderAssignments() {
+function renderAssignments(assignments) {
   const box = document.getElementById("assignmentBox");
-  const data = sampleData.assignments;
 
-  if (data.status === "input") {
-    box.innerHTML = data.items
-      .map(item => `📚 ${item.title} <strong>${item.dday}</strong>`)
-      .join("<br>");
-  } else if (data.status === "none") {
+  if (!assignments.length) {
     box.innerHTML = `<span class="empty">마감임박 과제 없음</span>`;
-  } else {
-    box.innerHTML = `<span class="warning">과제 담당자 확인 필요</span>`;
+    return;
   }
+
+  box.innerHTML = assignments
+    .map(item => `📚 ${item.title} <strong>${item.dday}</strong>`)
+    .join("<br>");
 }
 
-function renderPraiseRanking() {
+function renderPraiseRanking(rankingData) {
   const ranking = document.getElementById("praiseRanking");
   ranking.innerHTML = "";
 
-  sampleData.praiseTop3.forEach((name, index) => {
-    const medal = ["🥇", "🥈", "🥉"][index];
+  if (!rankingData.length) {
+    ranking.innerHTML = `<li class="empty">아직 칭찬 기록이 없습니다.</li>`;
+    return;
+  }
+
+  rankingData.forEach((item, index) => {
+    const medal = ["🥇", "🥈", "🥉"][index] || "✨";
     const li = document.createElement("li");
-    li.textContent = `${medal} ${name}`;
+
+    if (typeof item === "string") {
+      li.textContent = `${medal} ${item}`;
+    } else {
+      li.textContent = `${medal} ${item.name} ${item.score}점 ${item.level || ""}`;
+    }
+
     ranking.appendChild(li);
   });
 }
 
-function submitSupply() {
+async function submitSupply() {
+  const writer = document.getElementById("supplyWriter").value.trim();
   const input = document.getElementById("supplyInput");
   const value = input.value.trim();
+  const result = document.getElementById("supplyResult");
+
+  if (!writer) {
+    result.textContent = "작성자 이름을 입력해주세요.";
+    return;
+  }
 
   if (!value) {
-    alert("준비물을 입력해주세요.");
+    result.textContent = "준비물을 입력해주세요.";
     return;
   }
 
-  sampleData.supplies = {
-    status: "input",
-    items: value.split(",").map(v => v.trim()).filter(Boolean)
-  };
+  result.textContent = "저장 중...";
 
-  input.value = "";
-  renderSupplies();
+  try {
+    const data = await postData({
+      action: "studentInput",
+      type: "준비물",
+      content: value,
+      writer,
+      status: "입력"
+    });
 
-  console.log({
-    type: "supply",
-    status: "input",
-    items: sampleData.supplies.items
-  });
+    if (!data.ok) {
+      result.textContent = "저장에 실패했습니다.";
+      return;
+    }
+
+    input.value = "";
+    result.textContent = "준비물이 등록되었습니다.";
+    await loadHomeData();
+  } catch (error) {
+    console.error(error);
+    result.textContent = "연결 오류가 발생했습니다.";
+  }
 }
 
-function submitNoSupply() {
-  sampleData.supplies = {
-    status: "none",
-    items: []
-  };
+async function submitNoSupply() {
+  const writer = document.getElementById("supplyWriter").value.trim();
+  const result = document.getElementById("supplyResult");
 
-  renderSupplies();
+  if (!writer) {
+    result.textContent = "작성자 이름을 입력해주세요.";
+    return;
+  }
 
-  console.log({
-    type: "supply",
-    status: "none"
-  });
+  result.textContent = "저장 중...";
+
+  try {
+    const data = await postData({
+      action: "studentInput",
+      type: "준비물",
+      content: "없음",
+      writer,
+      status: "없음"
+    });
+
+    if (!data.ok) {
+      result.textContent = "저장에 실패했습니다.";
+      return;
+    }
+
+    result.textContent = "오늘 준비물 없음으로 등록되었습니다.";
+    await loadHomeData();
+  } catch (error) {
+    console.error(error);
+    result.textContent = "연결 오류가 발생했습니다.";
+  }
 }
 
-function submitAssignment() {
+async function submitAssignment() {
+  const writer = document.getElementById("assignmentWriter").value.trim();
   const title = document.getElementById("assignmentTitle").value.trim();
   const due = document.getElementById("assignmentDue").value;
+  const result = document.getElementById("assignmentResult");
 
-  if (!title || !due) {
-    alert("과제명과 마감일을 입력해주세요.");
+  if (!writer) {
+    result.textContent = "작성자 이름을 입력해주세요.";
     return;
   }
 
-  const dday = calculateDday(due);
+  if (!title || !due) {
+    result.textContent = "과제명과 마감일을 입력해주세요.";
+    return;
+  }
 
-  sampleData.assignments = {
-    status: "input",
-    items: [{ title, dday }]
-  };
+  result.textContent = "저장 중...";
 
-  document.getElementById("assignmentTitle").value = "";
-  document.getElementById("assignmentDue").value = "";
+  try {
+    const data = await postData({
+      action: "studentInput",
+      type: "과제",
+      content: title,
+      dueDate: due,
+      writer,
+      status: "입력"
+    });
 
-  renderAssignments();
+    if (!data.ok) {
+      result.textContent = "저장에 실패했습니다.";
+      return;
+    }
 
-  console.log({
-    type: "assignment",
-    status: "input",
-    title,
-    due,
-    dday
-  });
+    document.getElementById("assignmentTitle").value = "";
+    document.getElementById("assignmentDue").value = "";
+    result.textContent = "과제가 등록되었습니다.";
+    await loadHomeData();
+  } catch (error) {
+    console.error(error);
+    result.textContent = "연결 오류가 발생했습니다.";
+  }
 }
 
-function submitNoAssignment() {
-  sampleData.assignments = {
-    status: "none",
-    items: []
-  };
+async function submitNoAssignment() {
+  const writer = document.getElementById("assignmentWriter").value.trim();
+  const result = document.getElementById("assignmentResult");
 
-  renderAssignments();
+  if (!writer) {
+    result.textContent = "작성자 이름을 입력해주세요.";
+    return;
+  }
 
-  console.log({
-    type: "assignment",
-    status: "none"
-  });
+  result.textContent = "저장 중...";
+
+  try {
+    const data = await postData({
+      action: "studentInput",
+      type: "과제",
+      content: "없음",
+      writer,
+      status: "없음"
+    });
+
+    if (!data.ok) {
+      result.textContent = "저장에 실패했습니다.";
+      return;
+    }
+
+    result.textContent = "마감임박 과제 없음으로 등록되었습니다.";
+    await loadHomeData();
+  } catch (error) {
+    console.error(error);
+    result.textContent = "연결 오류가 발생했습니다.";
+  }
 }
 
-function calculateDday(dateString) {
-  const today = new Date();
-  const due = new Date(dateString);
+function formatShortDate(dateString) {
+  if (!dateString) return "";
 
-  today.setHours(0, 0, 0, 0);
-  due.setHours(0, 0, 0, 0);
+  const date = new Date(dateString);
+  if (isNaN(date)) return dateString;
 
-  const diff = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const weekday = ["일", "월", "화", "수", "목", "금", "토"][date.getDay()];
 
-  if (diff === 0) return "D-DAY";
-  if (diff > 0) return `D-${diff}`;
-  return `D+${Math.abs(diff)}`;
+  return `${month}/${day}(${weekday})`;
 }
 
 init();
