@@ -53,21 +53,25 @@
 
     <section class="card input-section">
       <h2>🎒 준비물 담당자 입력</h2>
+      <input id="supplyWriter" type="text" placeholder="작성자 이름" />
       <input id="supplyInput" type="text" placeholder="예: 체육복, 독서기록장" />
       <div class="button-row">
         <button onclick="submitSupply()">준비물 등록</button>
         <button class="sub" onclick="submitNoSupply()">오늘 준비물 없음</button>
       </div>
+      <p id="supplyResult" class="result"></p>
     </section>
 
     <section class="card input-section">
       <h2>📚 과제 담당자 입력</h2>
+      <input id="assignmentWriter" type="text" placeholder="작성자 이름" />
       <input id="assignmentTitle" type="text" placeholder="과제명 예: 영어 단어 외우기" />
       <input id="assignmentDue" type="date" />
       <div class="button-row">
         <button onclick="submitAssignment()">과제 등록</button>
         <button class="sub" onclick="submitNoAssignment()">마감임박 과제 없음</button>
       </div>
+      <p id="assignmentResult" class="result"></p>
     </section>
   </main>
 
